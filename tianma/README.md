@@ -20,7 +20,7 @@
 
 ##安装方式
 
-1.下载ssi-webclient.js到你的本地目录中
+1.下载ssi-webclient.js到你的本地目录中 https://github.com/elppac/node-ssi/tree/master/tianma
 
 2.配置到tinama的config.js
 
@@ -39,8 +39,9 @@
 			new ssi({
 				request : context.request,
 				response : context.response
-			});
-			next();
+			},function(){
+				next();
+			}.bind(this));
 		}
 	-])
 

@@ -6,20 +6,21 @@ var fs = require('fs'),
 
 var INCLUDE_PATTERN = new RegExp('<!--#include file=[\"|\'](.*?\.html)[\"|\'] -->'),
 	IP_PATTERN = /^(?:\d+\.){3}\d+$/,
-	FILE_EXT = [ 'html' , 'htm' ];
+	FILE_EXT = [ 'html' , 'htm' ],
+	IMAGE_EXT = ['png','jpg','jepg','gif'];
 
 module.exports = ssiWebClient;
 
-function ssiWebClient( config ){
+function ssiWebClient( config,callback ){
 	var config = this.config = marge.call( this, config, {
 		request : null,
 		response : null,
-		tab : false,
+		tab : true,
 		limit : 500,
-		debug : true
+		debug : false
 	});
 	this.layer = 0;
-	//this.callback = callback;
+	this.callback = callback;
 	this.data = config.response.body();
 	//页面没有找到
 	if( config.response.status() !== 200 ){
@@ -28,28 +29,32 @@ function ssiWebClient( config ){
 	
 	//请求文件扩展名
 	var ext = config.request.pathname.replace(/.*[\.\/]/, '').toLowerCase();
+	this.isImage = false;
 	//扩展名不适合
 	if( FILE_EXT.indexOf( ext ) === -1 ){
+		if( IMAGE_EXT.indexOf( ext ) > -1 ){
+			this.isImage = true;
+		}
 		output.call(this,null);
+	}else{
+		var uri = url.parse(config.request.href);
+		this.options = {
+			hostname : uri.hostname,
+			path : uri.path,
+			post : uri.post || 80,
+			body : config.request.body()
+		}
+		//this.options.headers.host = options.hostname;
+		this.client = uri.protocol === 'https:' ? https : http;
+		
+		main.call(this);
 	}
-	
-	var uri = url.parse(config.request.href);
-	this.options = {
-		hostname : uri.hostname,
-		path : uri.path,
-		post : uri.post || 80,
-		body : config.request.body()
-	}
-	//this.options.headers.host = options.hostname;
-	this.client = uri.protocol === 'https:' ? https : http;
-	
-	main.call(this);
 }
 
 function main(){
 	var m = contentMatch.call( this, this.data );
-	console.log('main');
-	console.dir( m );
+	// console.log('main');
+	 // console.dir( m );
 	if( m ){
 		this.tmplMatch = m;
 		send.call( this, m.filepath , contentMatch.bind(this) );
@@ -88,23 +93,22 @@ function send( filepath, onload ){
 				head,
 				body = [];
 			response.on('data', function (chunk) {
-				console.log('------------ send data ---------------');
-				//console.log(chunk);
+				//console.log('------------ send data ---------------');
 				body.push(chunk);
 			});
 
 			response.on('end', function () {
-				console.log('------------ send end ---------------');
-				
+				//console.log('------------ send end ---------------');
 				body = Buffer.concat(body);
-				console.log( body.toString() );
 				tmplMatch = this.tmplMatch;
+				//console.dir( tmplMatch );
 				if( tmplMatch ){
 					var arr = [];
 					tab && arr.push('<!--' + tmplMatch.filepath + ' start -->');
 					arr.push(body.toString());
 					tab && arr.push('<!--' + tmplMatch.filepath + ' end -->');
 					this.data = this.data.replace( tmplMatch.tmpl, arr.join('\r\n') );
+					
 				}else{
 					this.data = body.toString();
 				}
@@ -113,23 +117,10 @@ function send( filepath, onload ){
 					this.tmplMatch = m;
 					send.call(this, m.filepath , onload);
 				}
-			});
-		});
+			}.bind(this));
+		}.bind(this));
 	req.on('error', function(){
-		console.log('------------ send error ---------------');
-		if( this.tmplMatch ){
-			var arr = [];
-			tab && arr.push('<!--' + tmplMatch.filepath + ' start -->');
-			arr.push(body.toString());
-			tab && arr.push('<!--' + tmplMatch.filepath + ' end -->');
-			this.data = this.data.replace( tmplMatch.tmpl, arr.join('\r\n') );
-		}
-		this.data = this.data || '';
-		if( this.layer === 1 && this.data === '' ){
-			htmlError404.call( this );
-		}else{
-			onload( this.data );
-		}
+		htmlError404.call( this );
 	});
 	req.end();
 }
@@ -153,16 +144,22 @@ function htmlError500(){
 }
 function output( obj ){
 	var res = this.config.response;
+	//console.log( this.layer ,this.config.request.pathname );
 	if( !obj ){
-		//res.clear()
-		res.write( '' );
+		if( this.config.debug){
+			console.log( 'static' );
+		}
+		this.callback();
 	}else{
 		if( this.config.debug){
 			console.dir( obj );
 		}else{
-			res.status(obj.status);
+			//console.log( 'ssi' );
+			//this.config.response.clear();
+			//console.dir(res.body());
 			res.clear();
-			res.write(obj.content);
+			res.write(this.data);
+			this.callback();
 		}
 	}
 }
