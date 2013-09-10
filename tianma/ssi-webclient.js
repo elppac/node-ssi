@@ -5,6 +5,7 @@ var fs = require('fs'),
 	url = require('url');
 
 var INCLUDE_PATTERN = new RegExp('<!--#include file=[\"|\'](.*?\.html)[\"|\'] -->'),
+	I18N_PATTERN = new RegExp('\\$\\!\\{RESOURCE_BUNDLE\\.get\\(.*?\\)\\}','gi'),
 	IP_PATTERN = /^(?:\d+\.){3}\d+$/,
 	FILE_EXT = [ 'html' , 'htm' ],
 	IMAGE_EXT = ['png','jpg','jepg','gif'];
@@ -15,22 +16,22 @@ function ssiWebClient( config,callback ){
 	var config = this.config = marge.call( this, config, {
 		request : null,
 		response : null,
-		tab : true,
+		tab : false,
 		limit : 500,
 		debug : false
 	});
 	this.layer = 0;
 	this.callback = callback;
 	this.data = config.response.body();
-	//Ò³ÃæÃ»ÓÐÕÒµ½
+	//é¡µé¢æ²¡æœ‰æ‰¾åˆ°
 	if( config.response.status() !== 200 ){
 		output.call(this,null);
 	}
 	
-	//ÇëÇóÎÄ¼þÀ©Õ¹Ãû
+	//è¯·æ±‚æ–‡ä»¶æ‰©å±•å
 	var ext = config.request.pathname.replace(/.*[\.\/]/, '').toLowerCase();
 	this.isImage = false;
-	//À©Õ¹Ãû²»ÊÊºÏ
+	//æ‰©å±•åä¸é€‚åˆ
 	if( FILE_EXT.indexOf( ext ) === -1 ){
 		if( IMAGE_EXT.indexOf( ext ) > -1 ){
 			this.isImage = true;
@@ -124,10 +125,40 @@ function send( filepath, onload ){
 	});
 	req.end();
 }
+function stringToPatten( str ){
+	return new RegExp(str.replace(/\$/g,'\\$')
+		.replace(/\!/g,'\\!')
+		.replace(/\{/g,'\\{')
+		.replace(/\}/g,'\\}')
+		.replace(/\(/g,'\\(')
+		.replace(/\)/g,'\\)')
+		.replace(/\[/g,'\\[')
+		.replace(/\]/g,'\\]'), 'g');
+}
+function i18n( data ){
+	var matchs = data.match( I18N_PATTERN ),
+		i18nKeys = []
+		codes = [],
+		p = null;
+	for( p in matchs ){
+		var code = matchs[p];
+		if( codes.indexOf(code) === -1 ){
+			codes.push( code );
+			i18nKeys.push( { code:code, key: code.match(new RegExp('"(.*?)"'))[1]} );
+		}
+	}
+	codes = null;
+	var tempdata = data;
+	for( p in i18nKeys ){
+		tempdata = tempdata.replace( stringToPatten( i18nKeys[p].code ), i18nKeys[p].key );
+	}
+	return tempdata;
+}
 function html200(){
+	
 	output.call( this,{ 
 			statusCode : 200,
-			content : this.data
+			content : i18n(this.data)
 		});
 }
 function htmlError404(){
@@ -158,9 +189,9 @@ function output( obj ){
 			//this.config.response.clear();
 			//console.dir(res.body());
 			res.clear();
-			res.write(this.data);
-			this.callback();
+			res.write(obj.content);
 		}
+		this.callback();
 	}
 }
 function marge(newObject, defObject) {
